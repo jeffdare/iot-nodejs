@@ -21,6 +21,7 @@
    Contributors:
    Tim-Daniel Jacobi - Initial Contribution
    Jeffrey Dare
+   Lokesh Haralakatta - Added Client Side Certificates Support
    *****************************************************************************
    *
    */
@@ -102,8 +103,11 @@
 
         this.mqtt.on('connect', function () {
           _this.isConnected = true;
-          _this.log.info("[GatewayClient:connect] GatewayClient Connected");
-
+          if ((0, _utilUtilJs.isDefined)(_this.mqttConfig.servername)) {
+            _this.log.info("[GatewayClient:connect] GatewayClient Connected using Client Side Certificates");
+          } else {
+            _this.log.info("[GatewayClient:connect] GatewayClient Connected");
+          }
           if (_this.retryCount === 0) {
             _this.emit('connect');
           } else {
@@ -138,17 +142,17 @@
       }
     }, {
       key: 'publishGatewayEvent',
-      value: function publishGatewayEvent(eventType, eventFormat, payload, qos) {
-        return this.publishEvent(this.type, this.id, eventType, eventFormat, payload, qos);
+      value: function publishGatewayEvent(eventType, eventFormat, payload, qos, callback) {
+        return this.publishEvent(this.type, this.id, eventType, eventFormat, payload, qos, callback);
       }
     }, {
       key: 'publishDeviceEvent',
-      value: function publishDeviceEvent(deviceType, deviceId, eventType, eventFormat, payload, qos) {
-        return this.publishEvent(deviceType, deviceId, eventType, eventFormat, payload, qos);
+      value: function publishDeviceEvent(deviceType, deviceId, eventType, eventFormat, payload, qos, callback) {
+        return this.publishEvent(deviceType, deviceId, eventType, eventFormat, payload, qos, callback);
       }
     }, {
       key: 'publishEvent',
-      value: function publishEvent(type, id, eventType, eventFormat, payload, qos) {
+      value: function publishEvent(type, id, eventType, eventFormat, payload, qos, callback) {
         if (!this.isConnected) {
           this.log.error("[GatewayClient:publishEvent] Client is not connected");
           //throw new Error("Client is not connected");
@@ -171,7 +175,7 @@
         }
 
         this.log.debug("[GatewayClient:publishEvent] Publishing to topic : " + topic + " with payload : " + payload + " with QoS : " + QoS);
-        this.mqtt.publish(topic, payload, { qos: parseInt(QoS) });
+        this.mqtt.publish(topic, payload, { qos: parseInt(QoS) }, callback);
 
         return this;
       }
@@ -182,7 +186,7 @@
 
         this.log.debug("Publishing event of Type: " + eventType + " with payload : " + payload);
         return new _Promise['default'](function (resolve, reject) {
-          var uri = (0, _format2['default'])("https://%s.%s/api/v0002/device/types/%s/devices/%s/events/%s", _this2.org, _this2.domainName, _this2.type, _this2.id, eventType);
+          var uri = (0, _format2['default'])("https://%s.messaging.%s/api/v0002/device/types/%s/devices/%s/events/%s", _this2.org, _this2.domainName, _this2.type, _this2.id, eventType);
 
           var xhrConfig = {
             url: uri,
@@ -193,6 +197,8 @@
 
           if (eventFormat === 'json') {
             xhrConfig.headers['Content-Type'] = 'application/json';
+          } else if (eventFormat === 'xml') {
+            xhrConfig.headers['Content-Type'] = 'application/xml';
           }
 
           if (_this2.org !== QUICKSTART_ORG_ID) {

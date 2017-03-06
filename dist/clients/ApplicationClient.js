@@ -89,6 +89,23 @@
       }
       this.subscriptions = [];
 
+      this.httpServer = "";
+      // Parse http-server & domain property. http-server takes precedence over domain
+      if ((0, _utilUtilJs.isDefined)(config['http-server'])) {
+        if (!(0, _utilUtilJs.isString)(config['http-server'])) {
+          throw new Error('[BaseClient:constructor] http-server must be a string, ' + 'see Bluemix Watson IoT service credentials for more information');
+        }
+        this.httpServer = config['http-server'];
+      } else if ((0, _utilUtilJs.isDefined)(config.domain)) {
+        if (!(0, _utilUtilJs.isString)(config.domain)) {
+          throw new Error('[BaseClient:constructor] domain must be a string');
+        }
+        this.httpServer = config.org + "." + config.domain;
+        this.domainName = config.domain;
+      } else {
+        this.httpServer = config.org + ".internetofthings.ibmcloud.com";
+      }
+
       this.log.info("[ApplicationClient:constructor] ApplicationClient initialized for organization : " + config.org);
     }
 
@@ -197,7 +214,7 @@
       }
     }, {
       key: 'publish',
-      value: function publish(topic, msg, QoS) {
+      value: function publish(topic, msg, QoS, callback) {
         QoS = QoS || 0;
         if (!this.isConnected) {
           this.log.error("[ApplicationClient:publish] Client is not connected");
@@ -212,7 +229,7 @@
           msg = JSON.stringify(msg);
         }
         this.log.debug("[ApplicationClient:publish] Publish: " + topic + ", " + msg + ", QoS : " + QoS);
-        this.mqtt.publish(topic, msg, { qos: parseInt(QoS) });
+        this.mqtt.publish(topic, msg, { qos: parseInt(QoS) }, callback);
       }
     }, {
       key: 'subscribeToDeviceEvents',
@@ -311,7 +328,7 @@
       }
     }, {
       key: 'publishDeviceEvent',
-      value: function publishDeviceEvent(type, id, event, format, data, qos) {
+      value: function publishDeviceEvent(type, id, event, format, data, qos, callback) {
         qos = qos || 0;
         if (!(0, _utilUtilJs.isDefined)(type) || !(0, _utilUtilJs.isDefined)(id) || !(0, _utilUtilJs.isDefined)(event) || !(0, _utilUtilJs.isDefined)(format)) {
           this.log.error("[ApplicationClient:publishDeviceEvent] Required params for publishDeviceEvent not present");
@@ -320,12 +337,12 @@
           return;
         }
         var topic = "iot-2/type/" + type + "/id/" + id + "/evt/" + event + "/fmt/" + format;
-        this.publish(topic, data, qos);
+        this.publish(topic, data, qos, callback);
         return this;
       }
     }, {
       key: 'publishDeviceCommand',
-      value: function publishDeviceCommand(type, id, command, format, data, qos) {
+      value: function publishDeviceCommand(type, id, command, format, data, qos, callback) {
         qos = qos || 0;
         if (!(0, _utilUtilJs.isDefined)(type) || !(0, _utilUtilJs.isDefined)(id) || !(0, _utilUtilJs.isDefined)(command) || !(0, _utilUtilJs.isDefined)(format)) {
           this.log.error("[ApplicationClient:publishToDeviceCommand] Required params for publishDeviceCommand not present");
@@ -334,7 +351,7 @@
           return;
         }
         var topic = "iot-2/type/" + type + "/id/" + id + "/cmd/" + command + "/fmt/" + format;
-        this.publish(topic, data, qos);
+        this.publish(topic, data, qos, callback);
         return this;
       }
     }, {
@@ -344,7 +361,7 @@
 
         return new _Promise['default'](function (resolve, reject) {
           // const API_HOST = "https://%s.internetofthings.ibmcloud.com/api/v0002";
-          var uri = (0, _format2['default'])("https://%s.%s/api/v0002", _this2.org, _this2.domainName);
+          var uri = (0, _format2['default'])("https://%s/api/v0002", _this2.httpServer);
 
           if (Array.isArray(paths)) {
             for (var i = 0, l = paths.length; i < l; i++) {
@@ -437,12 +454,13 @@
       }
     }, {
       key: 'registerDeviceType',
-      value: function registerDeviceType(typeId, description, deviceInfo, metadata) {
-        this.log.debug("[ApplicationClient] registerDeviceType(" + typeId + ", " + description + ", " + deviceInfo + ", " + metadata + ")");
+      value: function registerDeviceType(typeId, description, deviceInfo, metadata, classId) {
+        this.log.debug("[ApplicationClient] registerDeviceType(" + typeId + ", " + description + ", " + deviceInfo + ", " + metadata + ", " + classId + ")");
         // TODO: field validation
+        classId = classId || "Device";
         var body = {
           id: typeId,
-          classId: "Device",
+          classId: classId,
           deviceInfo: deviceInfo,
           description: description,
           metadata: metadata
@@ -537,7 +555,7 @@
       key: 'deleteDiagnosticLog',
       value: function deleteDiagnosticLog(type, deviceId, logId) {
         this.log.debug("[ApplicationClient] deleteDiagnosticLog(" + type + ", " + deviceId + ", " + logId + ")");
-        return this.callApi('DELETE', 204, true, ['device', 'types', type, 'devices', deviceId, 'diag', 'logs', logId], null);
+        return this.callApi('DELETE', 204, false, ['device', 'types', type, 'devices', deviceId, 'diag', 'logs', logId], null);
       }
     }, {
       key: 'getDeviceErrorCodes',
@@ -695,7 +713,7 @@
         this.log.debug("[ApplicationClient:publishHTTPS] Publishing event of Type: " + eventType + " with payload : " + payload);
         return new _Promise['default'](function (resolve, reject) {
 
-          var uri = (0, _format2['default'])("https://%s.%s/api/v0002/device/types/%s/devices/%s/events/%s", _this3.org, _this3.domainName, deviceType, deviceId, eventType);
+          var uri = (0, _format2['default'])("https://%s/api/v0002/application/types/%s/devices/%s/events/%s", _this3.mqttServer, deviceType, deviceId, eventType);
 
           var xhrConfig = {
             url: uri,
@@ -706,6 +724,8 @@
 
           if (eventFormat === 'json') {
             xhrConfig.headers['Content-Type'] = 'application/json';
+          } else if (eventFormat === 'xml') {
+            xhrConfig.headers['Content-Type'] = 'application/xml';
           }
 
           if (_this3.org !== QUICKSTART_ORG_ID) {

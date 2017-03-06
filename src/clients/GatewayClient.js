@@ -8,6 +8,7 @@
  Contributors:
  Tim-Daniel Jacobi - Initial Contribution
  Jeffrey Dare
+ Lokesh Haralakatta - Added Client Side Certificates Support
  *****************************************************************************
  *
  */
@@ -70,8 +71,12 @@ export default class GatewayClient extends BaseClient {
 
     this.mqtt.on('connect', () => {
       this.isConnected = true;
-      this.log.info("[GatewayClient:connect] GatewayClient Connected");
-
+      if(isDefined(this.mqttConfig.servername)){
+        this.log.info("[GatewayClient:connect] GatewayClient Connected using Client Side Certificates");
+      }
+      else {
+        this.log.info("[GatewayClient:connect] GatewayClient Connected");
+      }
       if(this.retryCount === 0){
         this.emit('connect');
       } else {
@@ -115,15 +120,15 @@ export default class GatewayClient extends BaseClient {
     });
   }
 
-  publishGatewayEvent(eventType, eventFormat, payload, qos){
-    return this.publishEvent(this.type, this.id, eventType, eventFormat, payload, qos);
+  publishGatewayEvent(eventType, eventFormat, payload, qos, callback){
+    return this.publishEvent(this.type, this.id, eventType, eventFormat, payload, qos, callback);
   }
 
-  publishDeviceEvent(deviceType, deviceId, eventType, eventFormat, payload, qos){
-    return this.publishEvent(deviceType, deviceId, eventType, eventFormat, payload, qos);
+  publishDeviceEvent(deviceType, deviceId, eventType, eventFormat, payload, qos, callback){
+    return this.publishEvent(deviceType, deviceId, eventType, eventFormat, payload, qos, callback);
   }
 
-  publishEvent(type, id, eventType, eventFormat, payload, qos){
+  publishEvent(type, id, eventType, eventFormat, payload, qos, callback){
     if (!this.isConnected) {
       this.log.error("[GatewayClient:publishEvent] Client is not connected");
       //throw new Error("Client is not connected");
@@ -146,7 +151,7 @@ export default class GatewayClient extends BaseClient {
     }
 
     this.log.debug("[GatewayClient:publishEvent] Publishing to topic : "+ topic + " with payload : "+payload+" with QoS : "+QoS);
-    this.mqtt.publish(topic,payload,{qos: parseInt(QoS)});
+    this.mqtt.publish(topic,payload,{qos: parseInt(QoS)}, callback);
 
     return this;
   }
@@ -154,7 +159,7 @@ export default class GatewayClient extends BaseClient {
   publishHTTPS(eventType, eventFormat, payload){
     this.log.debug("Publishing event of Type: "+ eventType + " with payload : "+payload);
     return new Promise((resolve, reject) => {
-      let uri = format("https://%s.%s/api/v0002/device/types/%s/devices/%s/events/%s", this.org, this.domainName, this.type, this.id, eventType);
+      let uri = format("https://%s.messaging.%s/api/v0002/device/types/%s/devices/%s/events/%s", this.org, this.domainName, this.type, this.id, eventType);
 
       let xhrConfig = {
         url: uri,
@@ -167,6 +172,8 @@ export default class GatewayClient extends BaseClient {
 
       if(eventFormat === 'json') {
         xhrConfig.headers['Content-Type'] = 'application/json';
+      } else if(eventFormat === 'xml') {
+        xhrConfig.headers['Content-Type'] = 'application/xml';
       }
 
       if(this.org !== QUICKSTART_ORG_ID) {

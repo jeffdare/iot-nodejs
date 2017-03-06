@@ -8,13 +8,14 @@
  Contributors:
  Tim-Daniel Jacobi - Initial Contribution
  Jeffrey Dare
+ Lokesh Haralakatta - Added Client Side Certificates Support
  *****************************************************************************
  *
  */
 import events from 'events';
 import mqtt from 'mqtt';
 import log from 'loglevel';
-import { isDefined, isString, isNode, isBoolean } from '../util/util.js';
+import { isDefined, isString, isNode, isBoolean, initializeMqttConfig } from '../util/util.js';
 
 const QUICKSTART_ORG_ID = "quickstart";
 
@@ -47,15 +48,24 @@ export default class BaseClient extends events.EventEmitter {
     }
 
 	this.domainName = "internetofthings.ibmcloud.com";
+	this.mqttServer = "";
     this.enforceWs = false;
-	// Parse Domain property
-	if(isDefined(config.domain)){
-		if(!isString(config.domain)){
-		  throw new Error('[BaseClient:constructor] domain must be a string');
-		}
-		this.domainName = config.domain;
+    // Parse mqtt-server & domain property. mqtt-server takes precedence over domain
+    if(isDefined(config['mqtt-server'])) {
+        if(!isString(config['mqtt-server'])){
+            throw new Error('[BaseClient:constructor] mqtt-server must be a string');
+        }
+        this.mqttServer = config['mqtt-server'];
+    } else if(isDefined(config.domain)){
+        if(!isString(config.domain)){
+            throw new Error('[BaseClient:constructor] domain must be a string');
+        }
+        this.mqttServer = config.org + ".messaging." + config.domain;
+        this.domainName = config.domain;
+    } else {
+        this.mqttServer = config.org + ".messaging.internetofthings.ibmcloud.com";
     }
-
+	
     //property to enforce Websockets even in Node 
     // CAUTION : This is deprecated and may be removed in future 
     // Parse enforce-ws property 
@@ -84,16 +94,13 @@ export default class BaseClient extends events.EventEmitter {
       }
 
       if(isNode() && !this.enforceWs) { 
-        this.host = "ssl://" + config.org + ".messaging." + this.domainName + ":8883"; 
+        this.host = "ssl://" + this.mqttServer + ":8883"; 
       } else {
-        this.host = "wss://" + config.org + ".messaging." + this.domainName + ":8883";
+        this.host = "wss://" + this.mqttServer + ":8883";
       }
 
       this.isQuickstart = false;
-      this.mqttConfig = {
-        password: config['auth-token'],
-        rejectUnauthorized : true
-      };
+      this.mqttConfig = initializeMqttConfig(config)
 
       if(isNode()){
         this.mqttConfig.caPaths = [__dirname + '/IoTFoundation.pem'];
@@ -110,7 +117,7 @@ export default class BaseClient extends events.EventEmitter {
   }
 
   setCleanSession(cleanSession){
-    if(!isBoolean(cleanSession) && cleanSession !== 'true' && cleanSession !== 'false'){ 
+    if(!isBoolean(cleanSession) && cleanSession !== 'true' && cleanSession !== 'false'){
       this.log.debug("[BaseClient:setCleanSession] Value given for cleanSession is "+cleanSession+" , is not a Boolean, setting to true");
       cleanSession = true;
     }

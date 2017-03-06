@@ -21,6 +21,7 @@
    Contributors:
    Tim-Daniel Jacobi - Initial Contribution
    Jeffrey Dare
+   Lokesh Haralakatta - Added Client Side Certificates Support
    *****************************************************************************
    *
    */
@@ -99,7 +100,11 @@
 
         this.mqtt.on('connect', function () {
           _this.isConnected = true;
-          _this.log.info("[DeviceClient:connect] DeviceClient Connected");
+          if ((0, _utilUtilJs.isDefined)(_this.mqttConfig.servername)) {
+            _this.log.info("[DeviceClient:connect] DeviceClient Connected using Client Side Certificates");
+          } else {
+            _this.log.info("[DeviceClient:connect] DeviceClient Connected");
+          }
           if (_this.retryCount === 0) {
             _this.emit('connect');
           } else {
@@ -126,7 +131,7 @@
       }
     }, {
       key: 'publish',
-      value: function publish(eventType, eventFormat, payload, qos) {
+      value: function publish(eventType, eventFormat, payload, qos, callback) {
         if (!this.isConnected) {
           this.log.error("[DeviceClient:publish] Client is not connected");
           //throw new Error();
@@ -143,7 +148,7 @@
           payload = JSON.stringify(payload);
         }
         this.log.debug("[DeviceClient:publish] Publishing to topic " + topic + " with payload " + payload + " with QoS " + QOS);
-        this.mqtt.publish(topic, payload, { qos: parseInt(QOS) });
+        this.mqtt.publish(topic, payload, { qos: parseInt(QOS) }, callback);
 
         return this;
       }
@@ -154,7 +159,7 @@
 
         this.log.debug("[DeviceClient:publishHTTPS] Publishing event of Type: " + eventType + " with payload : " + payload);
         return new _Promise['default'](function (resolve, reject) {
-          var uri = (0, _format2['default'])("https://%s.%s/api/v0002/device/types/%s/devices/%s/events/%s", _this2.org, _this2.domainName, _this2.typeId, _this2.deviceId, eventType);
+          var uri = (0, _format2['default'])("https://%s/api/v0002/device/types/%s/devices/%s/events/%s", _this2.mqttServer, _this2.typeId, _this2.deviceId, eventType);
 
           var xhrConfig = {
             url: uri,
@@ -165,6 +170,8 @@
 
           if (eventFormat === 'json') {
             xhrConfig.headers['Content-Type'] = 'application/json';
+          } else if (eventFormat === 'xml') {
+            xhrConfig.headers['Content-Type'] = 'application/xml';
           }
 
           if (_this2.org !== QUICKSTART_ORG_ID) {

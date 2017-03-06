@@ -8,6 +8,7 @@
  Contributors:
  Tim-Daniel Jacobi - Initial Contribution
  Jeffrey Dare
+ Lokesh Haralakatta - Added Client Side Certificates Support
  *****************************************************************************
  *
  */
@@ -67,7 +68,12 @@ export default class DeviceClient extends BaseClient {
 
     this.mqtt.on('connect', () => {
       this.isConnected = true;
-      this.log.info("[DeviceClient:connect] DeviceClient Connected");
+      if(isDefined(this.mqttConfig.servername)){
+        this.log.info("[DeviceClient:connect] DeviceClient Connected using Client Side Certificates");
+      }
+      else {
+        this.log.info("[DeviceClient:connect] DeviceClient Connected");
+      }
       if(this.retryCount === 0){
         this.emit('connect');
       } else {
@@ -98,7 +104,7 @@ export default class DeviceClient extends BaseClient {
     });
   }
 
-  publish(eventType, eventFormat, payload, qos){
+  publish(eventType, eventFormat, payload, qos, callback){
     if (!this.isConnected) {
       this.log.error("[DeviceClient:publish] Client is not connected");
       //throw new Error();
@@ -115,7 +121,7 @@ export default class DeviceClient extends BaseClient {
         payload = JSON.stringify(payload);
     }
     this.log.debug("[DeviceClient:publish] Publishing to topic "+topic+" with payload "+payload+" with QoS "+QOS);
-    this.mqtt.publish(topic,payload,{qos: parseInt(QOS)});
+    this.mqtt.publish(topic,payload,{qos: parseInt(QOS)}, callback);
 
     return this;
   }
@@ -123,7 +129,7 @@ export default class DeviceClient extends BaseClient {
   publishHTTPS(eventType, eventFormat, payload){
     this.log.debug("[DeviceClient:publishHTTPS] Publishing event of Type: "+ eventType + " with payload : "+payload);
     return new Promise((resolve, reject) => {
-      let uri = format("https://%s.%s/api/v0002/device/types/%s/devices/%s/events/%s", this.org, this.domainName, this.typeId, this.deviceId, eventType);
+      let uri = format("https://%s/api/v0002/device/types/%s/devices/%s/events/%s", this.mqttServer, this.typeId, this.deviceId, eventType);
 
       let xhrConfig = {
         url: uri,
@@ -136,6 +142,8 @@ export default class DeviceClient extends BaseClient {
 
       if(eventFormat === 'json') {
         xhrConfig.headers['Content-Type'] = 'application/json';
+      } else if(eventFormat === 'xml') {
+        xhrConfig.headers['Content-Type'] = 'application/xml';
       }
 
       if(this.org !== QUICKSTART_ORG_ID) {

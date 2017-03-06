@@ -58,6 +58,24 @@ export default class ApplicationClient extends BaseClient {
     }
     this.subscriptions = [];
 
+    this.httpServer = "";
+    // Parse http-server & domain property. http-server takes precedence over domain
+    if(isDefined(config['http-server'])) {
+        if(!isString(config['http-server'])){
+            throw new Error('[BaseClient:constructor] http-server must be a string, ' +
+                'see Bluemix Watson IoT service credentials for more information');
+        }
+        this.httpServer = config['http-server'];
+    } else if(isDefined(config.domain)){
+        if(!isString(config.domain)){
+            throw new Error('[BaseClient:constructor] domain must be a string');
+        }
+        this.httpServer = config.org + "." + config.domain;
+        this.domainName = config.domain;
+    } else {
+        this.httpServer = config.org + ".internetofthings.ibmcloud.com";
+    }
+	
     this.log.info("[ApplicationClient:constructor] ApplicationClient initialized for organization : " + config.org);
   }
 
@@ -187,7 +205,7 @@ export default class ApplicationClient extends BaseClient {
 
   }
 
-  publish(topic, msg, QoS){
+  publish(topic, msg, QoS, callback){
     QoS = QoS || 0;
     if (!this.isConnected) {
       this.log.error("[ApplicationClient:publish] Client is not connected");
@@ -202,7 +220,7 @@ export default class ApplicationClient extends BaseClient {
       msg = JSON.stringify(msg);
     }
     this.log.debug("[ApplicationClient:publish] Publish: "+topic+", "+msg+", QoS : "+QoS);
-    this.mqtt.publish(topic, msg, {qos:parseInt(QoS)});
+    this.mqtt.publish(topic, msg, {qos:parseInt(QoS)}, callback);
 
   }
 
@@ -293,7 +311,7 @@ export default class ApplicationClient extends BaseClient {
     return this;
   }
 
-  publishDeviceEvent(type, id, event, format, data, qos){
+  publishDeviceEvent(type, id, event, format, data, qos, callback){
     qos = qos || 0;
     if(!isDefined(type) || !isDefined(id) || !isDefined(event) || !isDefined(format) ) {
       this.log.error("[ApplicationClient:publishDeviceEvent] Required params for publishDeviceEvent not present");
@@ -302,11 +320,11 @@ export default class ApplicationClient extends BaseClient {
       return;
     }
     var topic = "iot-2/type/" + type + "/id/" + id + "/evt/" + event + "/fmt/" + format;
-    this.publish(topic, data, qos);
+    this.publish(topic, data, qos, callback);
     return this;
   }
 
-  publishDeviceCommand(type, id, command, format, data, qos){
+  publishDeviceCommand(type, id, command, format, data, qos, callback){
     qos = qos || 0;
     if(!isDefined(type) || !isDefined(id) || !isDefined(command) || !isDefined(format) ) {
       this.log.error("[ApplicationClient:publishToDeviceCommand] Required params for publishDeviceCommand not present");
@@ -315,14 +333,14 @@ export default class ApplicationClient extends BaseClient {
       return;
     }
     var topic = "iot-2/type/" + type + "/id/" + id + "/cmd/" + command + "/fmt/" + format;
-    this.publish(topic, data, qos);
+    this.publish(topic, data, qos, callback);
     return this;
   }
 
   callApi(method, expectedHttpCode, expectJsonContent, paths, body, params){
     return new Promise((resolve, reject) => {
       // const API_HOST = "https://%s.internetofthings.ibmcloud.com/api/v0002";
-      let uri = format("https://%s.%s/api/v0002", this.org, this.domainName);
+      let uri = format("https://%s/api/v0002", this.httpServer);
 
       if(Array.isArray(paths)){
         for(var i = 0, l = paths.length; i < l; i++){
@@ -409,12 +427,14 @@ export default class ApplicationClient extends BaseClient {
     return this.callApi('PUT', 200, true, ['device', 'types' , type], JSON.stringify(body));
   }
 
-  registerDeviceType(typeId, description, deviceInfo, metadata){
-    this.log.debug("[ApplicationClient] registerDeviceType("+typeId+", "+description+", "+deviceInfo+", "+metadata+")");
+
+  registerDeviceType(typeId, description, deviceInfo, metadata, classId){
+    this.log.debug("[ApplicationClient] registerDeviceType(" + typeId + ", " + description + ", " + deviceInfo + ", " + metadata + ", " + classId + ")");
     // TODO: field validation
+    classId = classId || "Device";
     let body = {
       id: typeId,
-      classId: "Device",
+      classId: classId,
       deviceInfo : deviceInfo,
       description : description,
       metadata: metadata
@@ -497,7 +517,7 @@ export default class ApplicationClient extends BaseClient {
 
   deleteDiagnosticLog(type, deviceId, logId){
     this.log.debug("[ApplicationClient] deleteDiagnosticLog("+type+", "+deviceId+", "+logId+")");
-    return this.callApi('DELETE', 204, true, ['device', 'types' , type, 'devices', deviceId, 'diag','logs',logId], null);
+    return this.callApi('DELETE', 204, false, ['device', 'types' , type, 'devices', deviceId, 'diag','logs',logId], null);
   }
 
   getDeviceErrorCodes(type, deviceId){
@@ -633,8 +653,7 @@ export default class ApplicationClient extends BaseClient {
     this.log.debug("[ApplicationClient:publishHTTPS] Publishing event of Type: "+ eventType + " with payload : "+payload);
     return new Promise((resolve, reject) => {
 
-      let uri = format("https://%s.%s/api/v0002/device/types/%s/devices/%s/events/%s", this.org, this.domainName, deviceType, deviceId, eventType);
-
+      let uri = format("https://%s/api/v0002/application/types/%s/devices/%s/events/%s", this.mqttServer, deviceType, deviceId, eventType);
 
       let xhrConfig = {
         url: uri,
@@ -647,6 +666,8 @@ export default class ApplicationClient extends BaseClient {
 
       if(eventFormat === 'json') {
         xhrConfig.headers['Content-Type'] = 'application/json';
+      } else if(eventFormat === 'xml') {
+        xhrConfig.headers['Content-Type'] = 'application/xml';
       }
 
       if(this.org !== QUICKSTART_ORG_ID) {
